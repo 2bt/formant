@@ -8,7 +8,6 @@ const MIXRATE: f32 = 44100.0;
 const WIN_W: u32 = 600;
 const WIN_H: u32 = 600;
 
-
 struct VoiceSynth {
     phase: f32,
     phase_inc: f32,
@@ -16,7 +15,8 @@ struct VoiceSynth {
     phase_f1_inc: f32,
     phase_f2: f32,
     phase_f2_inc: f32,
-    volume: f32,
+    gate: bool,
+    level: f32,
 }
 
 fn lerp(a: f32, b: f32, x: f32) -> f32 {
@@ -36,13 +36,17 @@ impl VoiceSynth {
             phase_f1_inc: 0.0,
             phase_f2: 0.0,
             phase_f2_inc: 0.0,
-            volume: 0.0,
+            gate: false,
+            level: 0.0,
         }
     }
+    fn release(&mut self) {
+        self.gate = false;
+    }
     fn update(&mut self, p: &Point) {
-        self.volume = 0.25;
         self.phase_f1_inc = lerp(250.0, 800.0, p.x as f32 / (WIN_W - 1) as f32) / MIXRATE;
         self.phase_f2_inc = lerp(500.0, 2500.0, 1.0 - p.y as f32 / (WIN_H - 1) as f32) / MIXRATE;
+        self.gate = true;
     }
 }
 
@@ -51,7 +55,6 @@ impl AudioCallback for VoiceSynth {
 
     fn callback(&mut self, out: &mut [f32]) {
         for x in out.iter_mut() {
-
             self.phase += self.phase_inc;
             if self.phase >= 1.0 {
                 self.phase = 0.0;
@@ -64,8 +67,13 @@ impl AudioCallback for VoiceSynth {
 
             *x = osc(self.phase_f1);
             *x += osc(self.phase_f2) * 0.8;
-            *x *= self.volume;
-            self.volume = (self.volume - 0.00001).max(0.0);
+            *x *= self.level * 0.25;
+
+            self.level = if self.gate {
+                (self.level + 0.001).min(1.0)
+            } else {
+                (self.level - 0.0001).max(0.0)
+            };
         }
     }
 }
@@ -116,6 +124,12 @@ fn main() {
                     Keycode::Escape => break 'running,
                     _ => {}
                 },
+                Event::MouseButtonUp {
+                    mouse_btn: MouseButton::Left,
+                    ..
+                } => {
+                    device.lock().release();
+                }
                 Event::MouseButtonDown {
                     mouse_btn: MouseButton::Left,
                     x,
