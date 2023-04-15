@@ -17,13 +17,13 @@ struct VoiceSynth {
     phase_f2_inc: f32,
     gate: bool,
     level: f32,
+    last_amp: f32,
 }
 
 fn lerp(a: f32, b: f32, x: f32) -> f32 {
     a * (1.0 - x) + b * x
 }
 fn osc(x: f32) -> f32 {
-    // (x * 4.0 - 2.0).abs() - 1.0
     (x * 2.0 * std::f32::consts::PI).sin()
 }
 
@@ -38,6 +38,7 @@ impl VoiceSynth {
             phase_f2_inc: 0.0,
             gate: false,
             level: 0.0,
+            last_amp: 0.0,
         }
     }
     fn release(&mut self) {
@@ -65,9 +66,12 @@ impl AudioCallback for VoiceSynth {
             self.phase_f1 = (self.phase_f1 + self.phase_f1_inc) % 1.0;
             self.phase_f2 = (self.phase_f2 + self.phase_f2_inc) % 1.0;
 
-            *x = osc(self.phase_f1);
-            *x += osc(self.phase_f2) * 0.8;
-            *x *= self.level * 0.25;
+            let amp = (osc(self.phase_f1) + osc(self.phase_f2) * 0.8) * self.level * 0.1;
+
+            // lpf
+            self.last_amp = lerp(self.last_amp, amp, 0.05);
+            *x = self.last_amp;
+
 
             self.level = if self.gate {
                 (self.level + 0.001).min(1.0)
